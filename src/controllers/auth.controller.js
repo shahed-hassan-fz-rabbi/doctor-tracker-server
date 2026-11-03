@@ -8,8 +8,9 @@ const ApiError = require('../utils/apiError');
 
 const COOKIE_OPTS = () => ({
   httpOnly: true,
-  // strict in normal conditions; relaxed when explicitly allowed
-  sameSite: 'lax',
+  // Vercel and Render are cross-site deployments; production cookies need
+  // SameSite=None plus Secure so browsers send the session to the API.
+  sameSite: env.COOKIE_SECURE ? 'none' : 'lax',
   secure: env.COOKIE_SECURE,
   path: '/api',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days

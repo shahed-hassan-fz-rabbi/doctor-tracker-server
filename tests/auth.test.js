@@ -31,6 +31,23 @@ describe('auth', () => {
     expect(res.body.data.user.email).toBe('admin@doctracker.test');
     expect(res.headers['set-cookie']).toBeDefined();
     expect(res.headers['set-cookie'][0]).toContain('HttpOnly');
+    expect(res.headers['set-cookie'][0]).toContain('SameSite=Lax');
+  });
+
+  it('sets cross-site session cookies securely in production', async () => {
+    await helpers.seedAdmin();
+    helpers.env.COOKIE_SECURE = true;
+    try {
+      const res = await require('supertest')(helpers.app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'admin@doctracker.test', password: 'AdminPass123!' });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['set-cookie'][0]).toContain('SameSite=None');
+      expect(res.headers['set-cookie'][0]).toContain('Secure');
+    } finally {
+      helpers.env.COOKIE_SECURE = false;
+    }
   });
 
   it('rejects wrong password with 401 and a generic message', async () => {
