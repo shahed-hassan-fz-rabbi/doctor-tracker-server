@@ -30,6 +30,12 @@ app.use(express.json({ limit: '16kb' }));
 app.use(cookieParser());
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
+// Session responses must never be reused from an HTTP cache.
+app.use('/api/v1/auth', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 app.use('/api/v1', routes);
 
 app.use(notFoundHandler);

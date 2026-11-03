@@ -23,7 +23,7 @@ async function start() {
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));
   } catch (err) {
-    logger.error('Failed to start server:', err?.message);
+    logger.error('Failed to start server:', err?.mongoDiagnostic || 'MongoDB connection failed. Check URI, credentials, DNS, and network access.');
     process.exit(1);
   }
 }

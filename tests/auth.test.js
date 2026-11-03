@@ -1,5 +1,6 @@
 const AdminModel = require('../src/models/admin.model');
 const helpers = require('./helpers');
+const jwt = require('jsonwebtoken');
 
 const { describe, it, expect, beforeAll, beforeEach, afterAll } = globalThis;
 
@@ -93,6 +94,31 @@ describe('auth', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.user.email).toBe('admin@doctracker.test');
+    expect(res.headers['cache-control']).toContain('no-store');
+  });
+
+  it.each([
+    ['expired', () => jwt.sign({ sub: '64cd5f1b9d34830000111111' }, helpers.env.JWT_SECRET, { expiresIn: -1 })],
+    ['invalid', () => 'not-a-valid-token'],
+  ])('rejects an %s session without exposing its token', async (_case, makeToken) => {
+    const token = makeToken();
+    const res = await require('supertest')(helpers.app)
+      .get('/api/v1/auth/me')
+      .set('Cookie', `${helpers.env.COOKIE_NAME}=${token}`);
+
+    expect(res.status).toBe(401);
+    expect(JSON.stringify(res.body)).not.toContain(token);
+  });
+
+  it('allows credentialed CORS requests from the configured frontend origin', async () => {
+    const origin = helpers.env.CORS_ORIGINS[0];
+    const res = await require('supertest')(helpers.app)
+      .options('/api/v1/auth/me')
+      .set('Origin', origin)
+      .set('Access-Control-Request-Method', 'GET');
+
+    expect(res.headers['access-control-allow-origin']).toBe(origin);
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
   });
 
   it('never leaks password hashes from any response', async () => {

@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const env = require('../config/env');
 const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
+const { isMongoFailure, mongoFailureHint } = require('../config/database');
 
 /** 404 for unknown API routes. */
 function notFoundHandler(req, res) {
@@ -40,17 +41,18 @@ function errorHandler(err, req, res, _next) {
   }
 
   const isApiError = error instanceof ApiError;
+  const isDatabaseError = !isApiError && isMongoFailure(error);
   const statusCode = isApiError ? error.statusCode : 500;
 
   if (!isApiError) {
-    logger.error(error?.stack || error);
+    logger.error(isDatabaseError ? mongoFailureHint(error) : error?.stack || error);
   }
 
   res.status(statusCode).json({
     success: false,
-    message: isApiError ? error.message : 'Internal server error',
+    message: isApiError ? error.message : isDatabaseError ? mongoFailureHint(error) : 'Internal server error',
     ...(isApiError && error.details ? { details: error.details } : {}),
-    ...(env.NODE_ENV !== 'production' ? { stack: error?.stack } : {}),
+    ...(env.NODE_ENV !== 'production' && !isDatabaseError ? { stack: error?.stack } : {}),
   });
 }
 

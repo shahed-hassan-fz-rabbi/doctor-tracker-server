@@ -15,19 +15,14 @@ module.exports = {
   async connect() {
     if (mongoose.connection.readyState === 1) return mongoose.connection;
 
-    // Always spin up an in-memory Mongo for tests unless a test URI was
-    // explicitly provided (the env.js test fallback points to a dead port
-    // on purpose, it must not be used for connecting).
-    const uriIsPlaceholder =
-      !process.env.MONGODB_URI ||
-      process.env.MONGODB_URI.startsWith('mongodb://127.0.0.1:27017/doctor-tracker-test');
-
-    if (uriIsPlaceholder) {
+    // Never let the developer's .env send tests to Atlas. Tests always use
+    // their own disposable MongoDB process.
+    if (!mongod) {
       mongod = await MongoMemoryServer.create();
-      process.env.MONGODB_URI = mongod.getUri('doctor-tracker-test');
+      process.env.TEST_MONGODB_URI = mongod.getUri('doctor-tracker-test');
       process.env.MEM_SERVER_ACTIVE = '1';
     }
-    await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect(process.env.TEST_MONGODB_URI);
     // explicit index creation: unique index builds happen lazily on first
     // write — wait for them so duplicate-key semantics are deterministic
     await Promise.all([

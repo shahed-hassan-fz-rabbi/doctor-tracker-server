@@ -1,11 +1,17 @@
 require('dotenv').config();
 
 const { z } = require('zod');
+const { isCompleteMongoUri } = require('./mongoUri');
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
-  MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
+  MONGODB_URI: z
+    .string()
+    .min(1, 'MONGODB_URI is required')
+    .refine(isCompleteMongoUri, {
+      message: 'MONGODB_URI must use mongodb:// or mongodb+srv:// and include a database name such as /doctor-tracker',
+    }),
   JWT_SECRET: z.string().min(16),
   JWT_EXPIRES_IN: z.string().default('7d'),
   COOKIE_NAME: z.string().default('dt_token'),
