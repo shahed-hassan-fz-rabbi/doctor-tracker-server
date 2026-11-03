@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+mongod-bin/
+.DS_Store
+Thumbs.db
