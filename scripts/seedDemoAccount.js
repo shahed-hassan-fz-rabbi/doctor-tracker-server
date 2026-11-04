@@ -15,7 +15,7 @@ const { isDemoMongoUri } = require('../src/config/mongoUri');
 async function seedDemoAccount({ uri = process.env.DEMO_SEED_MONGODB_URI, email = process.env.DEMO_ACCOUNT_EMAIL, password = process.env.DEMO_ACCOUNT_PASSWORD } = {}) {
   if (!isDemoMongoUri(uri)) throw new Error('Demo account seed refused: URI must target doctor-tracker-demo.');
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('DEMO_ACCOUNT_EMAIL must be a valid email.');
-  if (!password || password.length < 20) throw new Error('DEMO_ACCOUNT_PASSWORD must be at least 20 characters.');
+  if (!password || password.length < 8) throw new Error('DEMO_ACCOUNT_PASSWORD must be at least 8 characters.');
 
   const connection = await mongoose.createConnection(uri, {
     serverSelectionTimeoutMS: 10000,
