@@ -1,134 +1,128 @@
-# Doctor Tracker API
+# Doctor Tracker — API
 
-Doctor Tracker API is a standalone REST service for an administrator to manage doctor and patient records and view database-backed operational analytics. It uses MongoDB references and protects application data behind admin authentication.
+This repository contains the Express API used by the Doctor Tracker dashboard. It handles admin sign-in, doctor and patient records, doctor-patient assignments, and the data used by the dashboard and analytics pages.
+
+The API stores its data in MongoDB through Mongoose. The client and server are separate applications; the browser talks to this API over REST and never connects to MongoDB directly.
 
 ## Features
 
-- Versioned `/api/v1` Express REST API.
-- Admin login, logout and session lookup using JWTs in HttpOnly cookies.
-- Paginated doctor and patient CRUD, filters, sorting and doctor roster operations.
-- MongoDB aggregation endpoints for dashboard metrics and chart data.
-- Request validation, rate limits, Helmet headers, explicit credentialed CORS and centralized errors.
+- Versioned REST endpoints under `/api/v1`.
+- Admin login, session verification, and logout using a JWT in an HttpOnly cookie.
+- Doctor and patient CRUD, search, filters, sorting, and server-side pagination.
+- Doctor-patient relationships and roster endpoints.
+- MongoDB aggregations for dashboard and analytics data.
+- Request validation, rate limits, Helmet headers, explicit credentialed CORS, and centralized error handling.
 
-## Stack
+## Built with
 
-Node.js, Express, MongoDB Atlas, Mongoose, Zod, JWT, bcryptjs, Helmet, CORS and express-rate-limit.
+Node.js, Express, MongoDB Atlas, Mongoose, Zod, JWT, bcryptjs, Helmet, CORS, and express-rate-limit.
 
-## Local setup
+## Screenshots
 
-1. Install Node.js 20 or newer and MongoDB locally, or create an Atlas cluster.
-2. In this repository, run `npm ci`.
-3. Copy `.env.example` to `.env`; set a MongoDB URI and a unique random `JWT_SECRET` of at least 16 characters. Set the admin values to credentials you control.
-4. Run `npm run seed:admin` to create the administrator.
-5. Run `npm run dev`. The API listens on port 4000 by default.
-6. Configure the client repository's `NEXT_PUBLIC_API_URL` as `http://localhost:4000/api/v1` and allow `http://localhost:3000` in `CORS_ORIGINS`.
+The screenshots are stored with the client repository and show the dashboard against development data.
 
-Do not use the example admin credentials or JWT placeholder in a real environment. Never commit `.env`.
+![Doctor Tracker dashboard](https://raw.githubusercontent.com/shahed-hassan-fz-rabbi/doctor-tracker-client/main/docs/screenshots/dashboard-desktop.png)
 
-## Environment variables
+[Browse the full screenshot set](https://github.com/shahed-hassan-fz-rabbi/doctor-tracker-client/tree/main/docs/screenshots), including desktop and mobile views.
 
-| Variable | Purpose |
-|---|---|
-| `NODE_ENV` | Runtime mode (`development`, `test`, `production`) |
-| `PORT` | HTTP port (default `4000`) |
-| `MONGODB_URI` | MongoDB connection string; must include the database name, for example `.../doctor-tracker?retryWrites=true&w=majority` |
-| `JWT_SECRET` | Signing secret; use a unique random value |
-| `JWT_EXPIRES_IN` | JWT lifetime (default `7d`) |
-| `COOKIE_NAME` | Session cookie name |
-| `COOKIE_SECURE` | Set `true` when served over HTTPS |
-| `CORS_ORIGINS` | Comma-separated exact frontend origins |
-| `RATE_LIMIT_WINDOW_MINUTES`, `RATE_LIMIT_MAX` | General API rate limit |
-| `LOGIN_RATE_LIMIT_WINDOW_MINUTES`, `LOGIN_RATE_LIMIT_MAX` | Login rate limit |
-| `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Admin seed inputs |
+## Run locally
+
+You’ll need Node.js 20 or newer and a MongoDB database, either local or in Atlas.
+
+```bash
+npm ci
+```
+
+Copy `.env.example` to `.env` and set `MONGODB_URI` and a unique `JWT_SECRET` of at least 16 characters. The MongoDB URI must include the database name, such as `/doctor-tracker`. Set the admin seed values if you need to create a local admin.
+
+Start the API:
+
+```bash
+npm run dev
+```
+
+The default local port is `4000`. The client’s `NEXT_PUBLIC_API_URL` should be `http://localhost:4000/api/v1`, and `CORS_ORIGINS` must include the exact client origin (usually `http://localhost:3000`).
+
+Never commit `.env` or use the example values as real credentials. The seed scripts are for setup and development; don’t run the demo-data seed against production.
+
+## Configuration
+
+| Variable | Purpose | Notes |
+|---|---|---|
+| `NODE_ENV` | Runtime mode | `development`, `test`, or `production` |
+| `PORT` | HTTP port | Defaults to `4000`; Render provides this in production |
+| `MONGODB_URI` | MongoDB connection | Required; include `/doctor-tracker` in the database path |
+| `JWT_SECRET` | Signs application sessions | Required; use a private random value of at least 16 characters |
+| `JWT_EXPIRES_IN` | Session lifetime | Defaults to `7d` |
+| `COOKIE_NAME` | Session cookie name | Defaults to `dt_token` |
+| `COOKIE_SECURE` | HTTPS-only cookie setting | Set `true` in production |
+| `CORS_ORIGINS` | Allowed frontend origins | Comma-separated exact origins; no wildcard with credentials |
+| `RATE_LIMIT_WINDOW_MINUTES`, `RATE_LIMIT_MAX` | General API limit | Defaults are in `.env.example` |
+| `LOGIN_RATE_LIMIT_WINDOW_MINUTES`, `LOGIN_RATE_LIMIT_MAX` | Login API limit | Defaults are in `.env.example` |
+| `LOG_LEVEL` | Server log verbosity | Defaults to `info` |
+| `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Admin seed inputs | Used by `npm run seed:admin`, not normal request handling |
 
 ## API overview
 
-All application routes except health require an admin session where noted. Responses use a common JSON envelope.
+Application endpoints require an admin session. Successful responses use a common JSON envelope.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/v1/health` | Health and Mongo connection status |
-| `POST` | `/api/v1/auth/login` | Authenticate and set the session cookie |
-| `POST` | `/api/v1/auth/logout` | Clear the session cookie (authenticated) |
-| `GET` | `/api/v1/auth/me` | Current admin (authenticated) |
-| `GET`, `POST` | `/api/v1/doctors` | List/filter/page and create doctors |
-| `GET`, `PATCH`, `DELETE` | `/api/v1/doctors/:id` | Read, update or delete a doctor |
-| `GET`, `POST` | `/api/v1/doctors/:id/patients` | List/add patients under a doctor |
+| `GET` | `/api/v1/health` | API and MongoDB health |
+| `POST` | `/api/v1/auth/login` | Sign in and set the session cookie |
+| `GET` | `/api/v1/auth/me` | Check the current session |
+| `POST` | `/api/v1/auth/logout` | Clear the session cookie |
+| `GET`, `POST` | `/api/v1/doctors` | List, filter, paginate, or create doctors |
+| `GET`, `PATCH`, `DELETE` | `/api/v1/doctors/:id` | View, edit, or delete a doctor |
+| `GET`, `POST` | `/api/v1/doctors/:id/patients` | View or add patients for a doctor |
 | `DELETE` | `/api/v1/doctors/:id/patients/:patientId` | Unassign a patient without deleting the record |
-| `GET`, `POST` | `/api/v1/patients` | List/filter/page and create patients |
-| `GET`, `PATCH`, `DELETE` | `/api/v1/patients/:id` | Read, update or delete a patient |
-| `GET` | `/api/v1/analytics/overview` | Dashboard totals and recent activity |
-| `GET` | `/api/v1/analytics/patient-growth` | Monthly patient registration trend |
-| `GET` | `/api/v1/analytics/patients-by-condition` | Condition distribution |
-| `GET` | `/api/v1/analytics/patients-per-doctor` | Patient assignment counts |
-| `GET` | `/api/v1/analytics/doctor-specializations` | Specialization distribution |
+| `GET`, `POST` | `/api/v1/patients` | List, filter, paginate, or create patients |
+| `GET`, `PATCH`, `DELETE` | `/api/v1/patients/:id` | View, edit, or delete a patient |
+| `GET` | `/api/v1/analytics/*` | Dashboard and analytics aggregations |
 
-List endpoints accept validated filters and pagination parameters; see `src/validators/index.js` for accepted query fields and enums.
-
-## Architecture and data flow
-
-Express mounts versioned routers, then validation and authentication middleware protect controller/service operations. Services own the business logic and Mongoose queries. The client calls this API over HTTP with credentials enabled. MongoDB stores admins, doctors and patients; patient `doctorId` references a doctor. Analytics are computed in MongoDB aggregation pipelines.
-
-## Technical decisions
-
-1. **Use HttpOnly cookies for browser sessions.** The JWT is unavailable to JavaScript, reducing exposure to token theft from script injection. Credentialed CORS is restricted to configured origins; production must use HTTPS and secure cookies.
-2. **Keep database logic in services and aggregate on MongoDB.** This makes routes/controllers thin and avoids fetching whole collections to compute dashboard results. Indexes are documented alongside the Mongoose schemas for the query patterns they support.
+List query options and validation rules are defined in `src/validators/index.js`.
 
 ## Project layout
 
 ```text
 src/config/       Environment and MongoDB connection
 src/controllers/  HTTP handlers
-src/middlewares/  Authentication, validation, rate limits and errors
-src/models/       Admin, doctor and patient schemas and indexes
-src/routes/       Versioned endpoint definitions
-src/services/     Business logic and database operations
-src/utils/        Responses, errors, logging and query helpers
-src/validators/   Zod request schemas
+src/middlewares/  Authentication, validation, rate limits, and errors
+src/models/       Admin, doctor, and patient schemas
+src/routes/       Versioned API routes
+src/services/     Business logic and MongoDB queries
+src/utils/        Responses, errors, logging, and query helpers
+src/validators/   Request schemas
 scripts/          Admin and synthetic demo-data seed scripts
 tests/            API integration tests
 ```
 
 ## Checks
 
-- `npm test` — Vitest and Supertest integration tests; tests need the in-memory MongoDB binary or a configured test MongoDB URI.
-- `npm run dev` — starts Express and connects to the configured database.
-- `npm run seed:demo` — inserts synthetic development data; do not run against production data.
+```bash
+npm test
+npm start
+```
 
-## Deployment
+The test suite uses an isolated in-memory MongoDB. `npm run seed:demo` is for synthetic development data only.
 
-Create a Render Web Service from this repository's `main` branch. Set Root Directory to `.`, Runtime to Node, Build Command to `npm ci`, Start Command to `npm start`, and Health Check Path to `/api/v1/health`. The server listens on Render's injected `PORT` (the local default is `4000`).
+## Deploy to Render
 
-Set these variables in the service's **Environment** page. Required means required by this deployment; optional values use the defaults shown by the actual environment schema.
+Create a Web Service from `shahed-hassan-fz-rabbi/doctor-tracker-server`, using branch `main` and the repository root (`.`). Set Runtime to Node, Build Command to `npm ci`, Start Command to `npm start`, and Health Check Path to `/api/v1/health`.
 
-| Variable | Required | Purpose | Production value |
-|---|---|---|---|
-| `NODE_ENV` | Yes | Runtime mode | `production` |
-| `MONGODB_URI` | Yes | Atlas connection | Atlas connection string with `/doctor-tracker` as the database path; URI-encode reserved characters in username/password |
-| `JWT_SECRET` | Yes | Signs session JWTs | A unique random secret at least 16 characters long; keep private |
-| `COOKIE_SECURE` | Yes | Secure cross-site cookie transport | `true` |
-| `CORS_ORIGINS` | Yes | Exact allowed browser origins | Actual Vercel production origin, scheme plus host only; add exact Preview origins only if used |
-| `PORT` | No | HTTP listen port | Leave unset; Render supplies it |
-| `JWT_EXPIRES_IN` | No | Session lifetime | `7d` default, or your chosen policy |
-| `COOKIE_NAME` | No | Cookie name | `dt_token` default |
-| `RATE_LIMIT_WINDOW_MINUTES` | No | General rate limit window | `15` default |
-| `RATE_LIMIT_MAX` | No | General requests per window | `300` default |
-| `LOGIN_RATE_LIMIT_WINDOW_MINUTES` | No | Login rate limit window | `15` default |
-| `LOGIN_RATE_LIMIT_MAX` | No | Login attempts per window | `10` default |
-| `LOG_LEVEL` | No | Server logging verbosity | `info` default; use `warn` if desired |
+Set these values in the Render service’s Environment page:
 
-Do **not** set the `ADMIN_NAME`, `ADMIN_EMAIL`, or `ADMIN_PASSWORD` seed-only variables for routine runtime. The existing Atlas database already has an admin; do not run `npm run seed:admin` against it. Only seed a deliberately empty database after confirming the target and credentials. Never run `seed:demo` against production.
+| Variable | Production setting |
+|---|---|
+| `NODE_ENV` | `production` |
+| `MONGODB_URI` | Atlas connection string with `/doctor-tracker` as the database path; keep it private |
+| `JWT_SECRET` | Unique random value, at least 16 characters; keep it private |
+| `COOKIE_SECURE` | `true` |
+| `CORS_ORIGINS` | The exact Vercel origin, with no path or trailing slash |
+| `PORT` | Leave unset; Render supplies it |
 
-### MongoDB Atlas network access
+The API is deployed at [`https://doctor-tracker-server-29dm.onrender.com`](https://doctor-tracker-server-29dm.onrender.com). Its health endpoint is `/api/v1/health`.
 
-In Atlas, open **Security → Network Access → IP Access List → Add IP Address**. In Render, open the created service, choose **Connect → Outbound**, and copy the outbound IP ranges for the service's region into Atlas as the narrowest supported CIDR entries. Do not use `0.0.0.0/0` for production. Add a database user with the built-in `readWrite` role scoped to `doctor-tracker`; store the URI only as Render's `MONGODB_URI` secret. Preserve the existing collections and records.
+In MongoDB Atlas, grant the application database user `readWrite` access to `doctor-tracker`. Add the Render service’s outbound IP ranges to Atlas Network Access; don’t use `0.0.0.0/0` for production. If a username or password contains reserved URI characters, percent-encode those characters in the connection string. Store the URI only in Render’s `MONGODB_URI` setting. Keep `COOKIE_SECURE=true` and both services on HTTPS so the session cookie can be sent securely.
 
-In Atlas, use **Database → Connect → Drivers** to obtain the connection string, then ensure its path is `/doctor-tracker`. If the database user's password contains reserved URI characters, percent-encode those characters in the URI (do not encode the entire URI). Never paste the connection string into source control or a public `NEXT_PUBLIC_*` variable.
-
-After Vercel is deployed and its real origin is known, set that exact origin as `CORS_ORIGINS` in Render and redeploy. `COOKIE_SECURE=true` makes the cookie `Secure`, `HttpOnly`, and `SameSite=None` for cross-site requests; both domains must use HTTPS. Browser privacy settings may block third-party cookies, so verify the production login/session flow. Do not loosen CORS or cookie settings to hide that failure.
-
-No external deployment has been created.
-
-## Visual evidence
-
-The UI belongs to the separate client repository. Desktop and mobile screenshots are published in the client README under `docs/screenshots/`.
+The existing database already has its admin and records. Don’t rerun `seed:admin` or `seed:demo` against production.
