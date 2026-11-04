@@ -97,26 +97,35 @@ tests/            API integration tests
 
 ## Deployment
 
-The service is prepared for a Render deployment.
+Create a Render Web Service from this repository's `main` branch. Set Root Directory to `.`, Runtime to Node, Build Command to `npm ci`, Start Command to `npm start`, and Health Check Path to `/api/v1/health`. The server listens on Render's injected `PORT` (the local default is `4000`).
 
-1. Create a MongoDB Atlas cluster and database user. Add the Render egress addresses (or `0.0.0.0/0` while setting up) to Atlas Network Access.
-2. Create a Render Web Service from this repository with build command `npm ci` and start command `npm start`.
-3. Set these environment variables in Render:
+Set these variables in the service's **Environment** page. Required means required by this deployment; optional values use the defaults shown by the actual environment schema.
 
-   | Variable | Value |
-   |---|---|
-   | `NODE_ENV` | `production` |
-   | `MONGODB_URI` | `mongodb+srv://<user>:<password>@<cluster>/doctor-tracker?retryWrites=true&w=majority` |
-   | `JWT_SECRET` | a long random value unique to production |
-   | `COOKIE_SECURE` | `true` |
-   | `CORS_ORIGINS` | the exact Vercel origin, for example `https://doctor-tracker.vercel.app` |
-   | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | the administrator you control |
+| Variable | Required | Purpose | Production value |
+|---|---|---|---|
+| `NODE_ENV` | Yes | Runtime mode | `production` |
+| `MONGODB_URI` | Yes | Atlas connection | Atlas connection string with `/doctor-tracker` as the database path; URI-encode reserved characters in username/password |
+| `JWT_SECRET` | Yes | Signs session JWTs | A unique random secret at least 16 characters long; keep private |
+| `COOKIE_SECURE` | Yes | Secure cross-site cookie transport | `true` |
+| `CORS_ORIGINS` | Yes | Exact allowed browser origins | Actual Vercel production origin, scheme plus host only; add exact Preview origins only if used |
+| `PORT` | No | HTTP listen port | Leave unset; Render supplies it |
+| `JWT_EXPIRES_IN` | No | Session lifetime | `7d` default, or your chosen policy |
+| `COOKIE_NAME` | No | Cookie name | `dt_token` default |
+| `RATE_LIMIT_WINDOW_MINUTES` | No | General rate limit window | `15` default |
+| `RATE_LIMIT_MAX` | No | General requests per window | `300` default |
+| `LOGIN_RATE_LIMIT_WINDOW_MINUTES` | No | Login rate limit window | `15` default |
+| `LOGIN_RATE_LIMIT_MAX` | No | Login attempts per window | `10` default |
+| `LOG_LEVEL` | No | Server logging verbosity | `info` default; use `warn` if desired |
 
-   The database name segment (`/doctor-tracker`) is required: startup validation rejects a URI without one, and MongoDB would otherwise fall back to a default database name.
-4. Set the health check path to `/api/v1/health`.
-5. Run `npm run seed:admin` once against the deployed service to create the administrator.
+Do **not** set the `ADMIN_NAME`, `ADMIN_EMAIL`, or `ADMIN_PASSWORD` seed-only variables for routine runtime. The existing Atlas database already has an admin; do not run `npm run seed:admin` against it. Only seed a deliberately empty database after confirming the target and credentials. Never run `seed:demo` against production.
 
-With `COOKIE_SECURE=true` the session cookie is issued with `Secure` and `SameSite=None`, which is required for the cross-site Vercel → Render request. Both services must use HTTPS.
+### MongoDB Atlas network access
+
+In Atlas, open **Security → Network Access → IP Access List → Add IP Address**. In Render, open the created service, choose **Connect → Outbound**, and copy the outbound IP ranges for the service's region into Atlas as the narrowest supported CIDR entries. Do not use `0.0.0.0/0` for production. Add a database user with the built-in `readWrite` role scoped to `doctor-tracker`; store the URI only as Render's `MONGODB_URI` secret. Preserve the existing collections and records.
+
+In Atlas, use **Database → Connect → Drivers** to obtain the connection string, then ensure its path is `/doctor-tracker`. If the database user's password contains reserved URI characters, percent-encode those characters in the URI (do not encode the entire URI). Never paste the connection string into source control or a public `NEXT_PUBLIC_*` variable.
+
+After Vercel is deployed and its real origin is known, set that exact origin as `CORS_ORIGINS` in Render and redeploy. `COOKIE_SECURE=true` makes the cookie `Secure`, `HttpOnly`, and `SameSite=None` for cross-site requests; both domains must use HTTPS. Browser privacy settings may block third-party cookies, so verify the production login/session flow. Do not loosen CORS or cookie settings to hide that failure.
 
 No external deployment has been created.
 
