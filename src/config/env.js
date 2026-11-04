@@ -28,6 +28,17 @@ const envSchema = z.object({
   LOGIN_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().default(15),
   LOGIN_RATE_LIMIT_MAX: z.coerce.number().default(10),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+
+  // --- Google OAuth 2.0 ---
+  // Required in production. In development/test, empty strings are accepted
+  // so the server can start without Google credentials configured.
+  GOOGLE_CLIENT_ID: z.string().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().default(''),
+  GOOGLE_CALLBACK_URL: z
+    .string()
+    .default('http://localhost:4000/api/v1/auth/google/callback'),
+  /** Frontend origin to redirect back to after OAuth (e.g. https://doctor-tracker-client-sepia.vercel.app) */
+  FRONTEND_URL: z.string().default('http://localhost:3000'),
 });
 
 /**

@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { requireAuth } = require('../middlewares/auth.middleware');
+const { requireAuth, requireAdmin } = require('../middlewares/auth.middleware');
 const doctorController = require('../controllers/doctor.controller');
 const patientService = require('../services/patient.service');
 const validate = require('../middlewares/validate.middleware');
@@ -16,26 +16,27 @@ const {
 
 const router = Router();
 
-// Doctor management is admin-only — every route requires a session.
+// All routes require a valid session (viewer or admin).
 router.use(requireAuth);
 
+// Read routes — available to any authenticated user (viewer or admin)
 router.get('/', validate(doctorListQuerySchema), doctorController.listDoctors);
-router.post('/', validate(doctorBodySchema), doctorController.createDoctor);
-
 router.get('/:id', validate(doctorIdParamSchema), doctorController.getDoctor);
-router.patch('/:id', validate(composedDoctorUpdateSchema), doctorController.updateDoctor);
-router.delete('/:id', validate(doctorIdParamSchema), doctorController.deleteDoctor);
-
-// List the patients that belong to one doctor (doctors/:id details page).
 router.get('/:id/patients', validate(doctorIdParamSchema), doctorController.getDoctorPatients);
 
+// Write routes — admin role required
+router.post('/', requireAdmin, validate(doctorBodySchema), doctorController.createDoctor);
+router.patch('/:id', requireAdmin, validate(composedDoctorUpdateSchema), doctorController.updateDoctor);
+router.delete('/:id', requireAdmin, validate(doctorIdParamSchema), doctorController.deleteDoctor);
+
 /**
- * Add a new patient directly under this doctor. The doctor comes from the
- * URL so the client never posts an inconsistent doctorId — the same service
- * create path used by POST /patients runs (validation + FK check included).
+ * Add a new patient directly under this doctor (admin only).
+ * The doctor comes from the URL so the client never posts an inconsistent
+ * doctorId — the same service create path used by POST /patients runs.
  */
 router.post(
   '/:id/patients',
+  requireAdmin,
   validate(composedAddPatientUnderDoctorSchema),
   async (req, res, next) => {
     try {
@@ -50,9 +51,10 @@ router.post(
   }
 );
 
-// Unassign (remove) a patient from this doctor without deleting the record.
+// Unassign (remove) a patient from this doctor without deleting the record (admin only).
 router.delete(
   '/:id/patients/:patientId',
+  requireAdmin,
   validate(unassignPatientFromDoctorParamsSchema),
   async (req, res, next) => {
     try {

@@ -29,6 +29,7 @@ module.exports = {
       require('../src/models/admin.model').init(),
       require('../src/models/doctor.model').init(),
       require('../src/models/patient.model').init(),
+      require('../src/models/user.model').init(),
     ]);
     return mongoose.connection;
   },
