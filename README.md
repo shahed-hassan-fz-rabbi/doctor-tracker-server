@@ -31,7 +31,7 @@ Do not use the example admin credentials or JWT placeholder in a real environmen
 |---|---|
 | `NODE_ENV` | Runtime mode (`development`, `test`, `production`) |
 | `PORT` | HTTP port (default `4000`) |
-| `MONGODB_URI` | MongoDB connection string |
+| `MONGODB_URI` | MongoDB connection string; must include the database name, for example `.../doctor-tracker?retryWrites=true&w=majority` |
 | `JWT_SECRET` | Signing secret; use a unique random value |
 | `JWT_EXPIRES_IN` | JWT lifetime (default `7d`) |
 | `COOKIE_NAME` | Session cookie name |
@@ -97,8 +97,29 @@ tests/            API integration tests
 
 ## Deployment
 
-The service is prepared for a Render deployment: set `NODE_ENV=production`, a MongoDB Atlas URI, a strong JWT secret, `COOKIE_SECURE=true`, and exact `CORS_ORIGINS`. Configure Render's health check to `/api/v1/health`. No external deployment has been created.
+The service is prepared for a Render deployment.
+
+1. Create a MongoDB Atlas cluster and database user. Add the Render egress addresses (or `0.0.0.0/0` while setting up) to Atlas Network Access.
+2. Create a Render Web Service from this repository with build command `npm ci` and start command `npm start`.
+3. Set these environment variables in Render:
+
+   | Variable | Value |
+   |---|---|
+   | `NODE_ENV` | `production` |
+   | `MONGODB_URI` | `mongodb+srv://<user>:<password>@<cluster>/doctor-tracker?retryWrites=true&w=majority` |
+   | `JWT_SECRET` | a long random value unique to production |
+   | `COOKIE_SECURE` | `true` |
+   | `CORS_ORIGINS` | the exact Vercel origin, for example `https://doctor-tracker.vercel.app` |
+   | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | the administrator you control |
+
+   The database name segment (`/doctor-tracker`) is required: startup validation rejects a URI without one, and MongoDB would otherwise fall back to a default database name.
+4. Set the health check path to `/api/v1/health`.
+5. Run `npm run seed:admin` once against the deployed service to create the administrator.
+
+With `COOKIE_SECURE=true` the session cookie is issued with `Secure` and `SameSite=None`, which is required for the cross-site Vercel → Render request. Both services must use HTTPS.
+
+No external deployment has been created.
 
 ## Visual evidence
 
-The UI belongs to the separate client repository. Genuine desktop and mobile screenshots should be captured from that running app and documented in the client README.
+The UI belongs to the separate client repository. Desktop and mobile screenshots are published in the client README under `docs/screenshots/`.
