@@ -45,6 +45,8 @@ module.exports = {
   app,
   env,
   async seedAdmin() {
+    const existing = await Admin.findOne({ email: 'admin@doctracker.test' });
+    if (existing) return existing;
     return Admin.create({
       name: 'Test Admin',
       email: 'admin@doctracker.test',
@@ -62,6 +64,8 @@ module.exports = {
       user: res.body.data.user,
       setCookie,
       cookieHeader: setCookie ? setCookie.map((c) => c.split(';')[0]).join('; ') : null,
+      // Current doctor/patient suites refer to the session cookie by this alias.
+      adminCookie: setCookie ? setCookie.map((c) => c.split(';')[0]).join('; ') : null,
     };
   },
   async seedGoogleUser(email, role = 'viewer') {
