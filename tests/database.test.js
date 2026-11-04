@@ -1,7 +1,8 @@
 const { describe, it, expect } = globalThis;
 const { mongoFailureHint } = require('../src/config/database');
 const { healthResponse } = require('../src/routes/health.routes');
-const { isCompleteMongoUri } = require('../src/config/mongoUri');
+const { isCompleteMongoUri, isDemoMongoUri, getMongoDatabaseName } = require('../src/config/mongoUri');
+const { validateEnv } = require('../src/config/env');
 const { errorHandler } = require('../src/middlewares/error.middleware');
 
 describe('database diagnostics', () => {
@@ -10,6 +11,32 @@ describe('database diagnostics', () => {
     expect(isCompleteMongoUri('mongodb+srv://cluster.example/doctor-tracker?retryWrites=true')).toBe(true);
     expect(isCompleteMongoUri('mongodb://cluster.example/?retryWrites=true')).toBe(false);
     expect(isCompleteMongoUri('https://cluster.example/doctor-tracker')).toBe(false);
+  });
+
+  it('requires the isolated database name for demo connections', () => {
+    expect(getMongoDatabaseName('mongodb://localhost:27017/doctor-tracker-demo')).toBe('doctor-tracker-demo');
+    expect(isDemoMongoUri('mongodb+srv://cluster.example/doctor-tracker-demo?retryWrites=true')).toBe(true);
+    expect(isDemoMongoUri('mongodb://cluster.example/test')).toBe(false);
+  });
+
+  it('accepts a demo runtime config only with an isolated URI and separate secure settings', () => {
+    const valid = validateEnv({
+      NODE_ENV: 'production', DEMO_MODE: 'true',
+      DEMO_MONGODB_URI: 'mongodb://runtime:encoded@localhost:27017/doctor-tracker-demo',
+      DEMO_JWT_SECRET: 'd'.repeat(40), COOKIE_NAME: 'dt_demo_token', COOKIE_SECURE: 'true',
+    });
+    expect(valid.success).toBe(true);
+    expect(validateEnv({
+      NODE_ENV: 'production', DEMO_MODE: 'true',
+      DEMO_MONGODB_URI: 'mongodb://runtime:encoded@localhost:27017/doctor-tracker',
+      DEMO_JWT_SECRET: 'd'.repeat(40), COOKIE_NAME: 'dt_demo_token', COOKIE_SECURE: 'true',
+    }).success).toBe(false);
+    expect(validateEnv({
+      NODE_ENV: 'production', DEMO_MODE: 'true',
+      DEMO_MONGODB_URI: 'mongodb://runtime:encoded@localhost:27017/doctor-tracker-demo',
+      DEMO_JWT_SECRET: 'd'.repeat(40), JWT_SECRET: 'production-secret-value',
+      COOKIE_NAME: 'dt_demo_token', COOKIE_SECURE: 'true',
+    }).success).toBe(false);
   });
 
   it('identifies malformed MongoDB connection strings without echoing them', () => {

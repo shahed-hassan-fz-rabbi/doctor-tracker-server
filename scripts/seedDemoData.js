@@ -4,17 +4,14 @@
  * Run: npm run seed:demo
  */
 const mongoose = require('mongoose');
-const { z } = require('zod');
-require('dotenv').config();
 
 const Doctor = require('../src/models/doctor.model');
 const Patient = require('../src/models/patient.model');
-const { connectDatabase, disconnectDatabase } = require('../src/config/database');
+const DemoAccount = require('../src/models/demoAccount.model');
+const { isDemoMongoUri } = require('../src/config/mongoUri');
 const { SPECIALIZATIONS } = require('../src/models/doctor.model');
 const { CONDITIONS, GENDERS } = require('../src/models/patient.model');
 const logger = require('../src/utils/logger');
-
-const cfg = z.object({ MONGODB_URI: z.string().min(1) }).parse(process.env);
 
 const FIRST_NAMES = [
   'Ayesha', 'Reza', 'Mita', 'Farhan', 'Nusrat', 'Imran', 'Sabrina', 'Tanjir', 'Lamia', 'Rafid',
@@ -50,62 +47,91 @@ function recentDate(maxDaysAgo) {
   return new Date(Date.now() - ms);
 }
 
-async function seedDemoData() {
-  await connectDatabase(cfg.MONGODB_URI);
-
-  const existingCounts = await Promise.all([Doctor.countDocuments(), Patient.countDocuments()]);
-  if (existingCounts[0] > 0 || existingCounts[1] > 0) {
-    logger.warn(`Doctors: ${existingCounts[0]}, Patients: ${existingCounts[1]} — skipping demo seed (collections are not empty).`);
-    logger.warn('Drop doctor-tracker first if you want fresh demo data: db.getSiblingDB("doctor-tracker").dropDatabase()');
-    await disconnectDatabase();
-    return;
+async function seedDemoData({
+  uri = process.env.DEMO_SEED_MONGODB_URI,
+  requireEmptyDatabase = true,
+} = {}) {
+  if (!isDemoMongoUri(uri)) {
+    throw new Error('Demo seed refused: connection URI must target doctor-tracker-demo.');
   }
 
-  logger.info('Seeding synthetic demo data...');
+  const connection = await mongoose.createConnection(uri, {
+    serverSelectionTimeoutMS: 10000,
+    connectTimeoutMS: 10000,
+  }).asPromise();
+  try {
+    if (requireEmptyDatabase) {
+      const collections = await connection.db.listCollections().toArray();
+      for (const { name } of collections) {
+        const count = await connection.db.collection(name).countDocuments({});
+        if (count > 0) {
+          throw new Error('Demo seed refused: doctor-tracker-demo must be empty; no data was changed.');
+        }
+      }
+    }
 
-  const SPECIALITIES = SPECIALIZATIONS;
-  const doctorCount = 40;
-  const patientCount = 260;
+    const SeedDoctor = connection.model('Doctor', Doctor.schema);
+    const SeedPatient = connection.model('Patient', Patient.schema);
+    const SeedDemoAccount = connection.model('DemoAccount', DemoAccount.schema);
+    const existingCounts = await Promise.all([
+      SeedDoctor.countDocuments(),
+      SeedPatient.countDocuments(),
+      SeedDemoAccount.countDocuments(),
+    ]);
+    if (existingCounts.some((count) => count > 0)) {
+      throw new Error('Demo seed refused: demo data collections must be empty; no data was changed.');
+    }
 
-  const doctors = [];
-  for (let i = 0; i < doctorCount; i += 1) {
-    const createdAt = recentDate(240);
-    doctors.push({
-      name: `Dr. ${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`,
-      specialization: pick(SPECIALITIES),
-      hospital: pick(HOSPITALS),
-      phone: `${pick(PHONE_PREFIXES)} ${Math.floor(100000 + Math.random() * 899999)}`,
-      email: `dr.${i + 1}.${Math.random().toString(36).slice(2, 7)}@dtp-clinic.example.com`,
-      isActive: Math.random() > 0.15,
-      createdAt,
-      updatedAt: createdAt,
-    });
+    await Promise.all([SeedDoctor.init(), SeedPatient.init(), SeedDemoAccount.init()]);
+
+    logger.info('Seeding synthetic demo data into doctor-tracker-demo...');
+
+    const SPECIALITIES = SPECIALIZATIONS;
+    const doctorCount = 40;
+    const patientCount = 260;
+
+    const doctors = [];
+    for (let i = 0; i < doctorCount; i += 1) {
+      const createdAt = recentDate(240);
+      doctors.push({
+        name: `Dr. ${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`,
+        specialization: pick(SPECIALITIES),
+        hospital: pick(HOSPITALS),
+        phone: `${pick(PHONE_PREFIXES)} ${Math.floor(100000 + Math.random() * 899999)}`,
+        email: `dr.${i + 1}.${Math.random().toString(36).slice(2, 7)}@dtp-clinic.example.com`,
+        isActive: Math.random() > 0.15,
+        createdAt,
+        updatedAt: createdAt,
+      });
+    }
+
+    const insertedDoctors = await SeedDoctor.insertMany(doctors, { ordered: false });
+
+    const patients = [];
+    for (let i = 0; i < patientCount; i += 1) {
+      const createdAt = recentDate(150);
+      const assigned = Math.random() < 0.72;
+      patients.push({
+        fullName: randName(i),
+        age: 1 + Math.floor(Math.pow(Math.random(), 0.9) * 89),
+        gender: pick(GENDERS),
+        phone: `${pick(PHONE_PREFIXES)} ${Math.floor(100000 + Math.random() * 899999)}`,
+        email: Math.random() < 0.5 ? null : `p${i + 1}${Math.random().toString(36).slice(2, 6)}@dt-demo.example.com`,
+        condition: pick(CONDITIONS),
+        doctorId: assigned ? pick(insertedDoctors)._id : null,
+        notes: Math.random() < 0.4 ? 'Entry generated for demo telemetry and features.' : '',
+        createdAt,
+        updatedAt: createdAt,
+      });
+    }
+
+    await SeedPatient.insertMany(patients, { ordered: false });
+
+    logger.info(`✅ Seeded ${insertedDoctors.length} synthetic doctors and ${patients.length} synthetic patients.`);
+    return { doctors: insertedDoctors.length, patients: patients.length };
+  } finally {
+    await connection.close();
   }
-
-  const insertedDoctors = await Doctor.insertMany(doctors, { ordered: false });
-
-  const patients = [];
-  for (let i = 0; i < patientCount; i += 1) {
-    const createdAt = recentDate(150);
-    const assigned = Math.random() < 0.72;
-    patients.push({
-      fullName: randName(i),
-      age: 1 + Math.floor(Math.pow(Math.random(), 0.9) * 89),
-      gender: pick(GENDERS),
-      phone: `${pick(PHONE_PREFIXES)} ${Math.floor(100000 + Math.random() * 899999)}`,
-      email: Math.random() < 0.5 ? null : `p${i + 1}${Math.random().toString(36).slice(2, 6)}@dt-demo.example.com`,
-      condition: pick(CONDITIONS),
-      doctorId: assigned ? pick(insertedDoctors)._id : null,
-      notes: Math.random() < 0.4 ? 'Entry generated for demo telemetry and features.' : '',
-      createdAt,
-      updatedAt: createdAt,
-    });
-  }
-
-  await Patient.insertMany(patients, { ordered: false });
-
-  logger.info(`✅ Seeded ${insertedDoctors.length} doctors and ${patients.length} patients.`);
-  await disconnectDatabase();
 }
 
 if (require.main === module) {

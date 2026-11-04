@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { requireAuth, requireAdmin } = require('../middlewares/auth.middleware');
+const { requireAuth, requireAdmin, requireDemoViewer, requireAdminOrDemoViewer } = require('../middlewares/auth.middleware');
 const doctorController = require('../controllers/doctor.controller');
 const patientService = require('../services/patient.service');
 const validate = require('../middlewares/validate.middleware');
@@ -17,12 +17,12 @@ const {
 const router = Router();
 
 // All routes require a valid session (viewer or admin).
-router.use(requireAuth);
+router.use(requireAuth, requireDemoViewer);
 
-// Read routes — available to any authenticated user (viewer or admin)
-router.get('/', validate(doctorListQuerySchema), doctorController.listDoctors);
-router.get('/:id', validate(doctorIdParamSchema), doctorController.getDoctor);
-router.get('/:id/patients', validate(doctorIdParamSchema), doctorController.getDoctorPatients);
+// Read routes — admin role required (security fix: restrict doctor data access)
+router.get('/', requireAdminOrDemoViewer, validate(doctorListQuerySchema), doctorController.listDoctors);
+router.get('/:id', requireAdminOrDemoViewer, validate(doctorIdParamSchema), doctorController.getDoctor);
+router.get('/:id/patients', requireAdminOrDemoViewer, validate(doctorIdParamSchema), doctorController.getDoctorPatients);
 
 // Write routes — admin role required
 router.post('/', requireAdmin, validate(doctorBodySchema), doctorController.createDoctor);

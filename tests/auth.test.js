@@ -1,6 +1,10 @@
 const AdminModel = require('../src/models/admin.model');
 const helpers = require('./helpers');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const DemoAccount = require('../src/models/demoAccount.model');
+const Doctor = require('../src/models/doctor.model');
+const Patient = require('../src/models/patient.model');
 
 const { describe, it, expect, beforeAll, beforeEach, afterAll } = globalThis;
 
@@ -143,6 +147,70 @@ describe('auth', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['set-cookie'][0]).toContain('dt_token_test=;');
+  });
+
+  it('demo viewer can log in, verify a read-only session, and read isolated domain routes', async () => {
+    helpers.env.DEMO_MODE = true;
+    helpers.env.COOKIE_NAME = 'dt_demo_token_test';
+    try {
+      const account = await DemoAccount.create({
+        email: 'demo@doctortracker.test', name: 'Demo Viewer',
+        passwordHash: await bcrypt.hash('demo-test-password-123456', 4),
+      });
+      const agent = require('supertest')(helpers.app);
+      const login = await agent.post('/api/v1/auth/demo-login').send({
+        email: 'DEMO@DOCTORTRACKER.TEST', password: 'demo-test-password-123456',
+      });
+      expect(login.status).toBe(200);
+      expect(login.body.data.user.role).toBe('viewer');
+      expect(login.body.data.user.isDemo).toBe(true);
+      expect(login.body.data.user.passwordHash).toBeUndefined();
+      expect(login.headers['set-cookie'][0]).toContain('HttpOnly');
+      const cookie = login.headers['set-cookie'][0].split(';')[0];
+      const updatedAt = (await DemoAccount.findById(account._id)).updatedAt.getTime();
+
+      const me = await agent.get('/api/v1/auth/me').set('Cookie', cookie);
+      expect(me.status).toBe(200);
+      expect(me.body.data.user.role).toBe('viewer');
+      expect((await DemoAccount.findById(account._id)).updatedAt.getTime()).toBe(updatedAt);
+
+      expect((await agent.get('/api/v1/doctors').set('Cookie', cookie)).status).toBe(200);
+      expect((await agent.get('/api/v1/patients').set('Cookie', cookie)).status).toBe(200);
+      expect((await agent.get('/api/v1/analytics/overview').set('Cookie', cookie)).status).toBe(200);
+      expect((await agent.post('/api/v1/auth/login').send({ email: 'x@y.test', password: 'pass' })).status).toBe(404);
+      expect((await agent.get('/api/v1/auth/google')).status).toBe(404);
+      expect((await agent.post('/api/v1/doctors').set('Cookie', cookie).send({})).status).toBe(403);
+      expect((await agent.patch(`/api/v1/doctors/${new (require('mongoose').Types.ObjectId)()}`).set('Cookie', cookie).send({})).status).toBe(403);
+      expect((await agent.delete(`/api/v1/doctors/${new (require('mongoose').Types.ObjectId)()}`).set('Cookie', cookie)).status).toBe(403);
+      expect((await agent.post('/api/v1/patients').set('Cookie', cookie).send({})).status).toBe(403);
+      expect((await agent.patch(`/api/v1/patients/${new (require('mongoose').Types.ObjectId)()}`).set('Cookie', cookie).send({})).status).toBe(403);
+      expect((await agent.delete(`/api/v1/patients/${new (require('mongoose').Types.ObjectId)()}`).set('Cookie', cookie)).status).toBe(403);
+      expect(await Doctor.countDocuments()).toBe(0);
+      expect(await Patient.countDocuments()).toBe(0);
+    } finally {
+      helpers.env.DEMO_MODE = false;
+      helpers.env.COOKIE_NAME = 'dt_token_test';
+    }
+  });
+
+  it('does not accept a demo session when the demo account has been deactivated', async () => {
+    helpers.env.DEMO_MODE = true;
+    helpers.env.COOKIE_NAME = 'dt_demo_token_test';
+    try {
+      const account = await DemoAccount.create({
+        email: 'inactive@doctortracker.test', passwordHash: await bcrypt.hash('demo-test-password-123456', 4),
+      });
+      const token = jwt.sign({ sub: account.id, provider: 'demo', role: 'viewer' }, helpers.env.JWT_SECRET, {
+        issuer: 'doctor-tracker-demo', audience: 'doctor-tracker-demo', expiresIn: '1h',
+      });
+      await DemoAccount.updateOne({ _id: account._id }, { active: false });
+      const res = await require('supertest')(helpers.app).get('/api/v1/auth/me')
+        .set('Cookie', `${helpers.env.COOKIE_NAME}=${token}`);
+      expect(res.status).toBe(401);
+    } finally {
+      helpers.env.DEMO_MODE = false;
+      helpers.env.COOKIE_NAME = 'dt_token_test';
+    }
   });
 
   it('404 for unknown routes', async () => {

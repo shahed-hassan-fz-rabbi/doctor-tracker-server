@@ -6,6 +6,8 @@ describe('doctors', () => {
   const Doctor = require('../src/models/doctor.model');
   const Patient = require('../src/models/patient.model');
 
+  let adminCookie = null;
+
   const doctorPayload = (i = 1, overrides = {}) => ({
     name: `Dr. Test ${i}`,
     specialization: 'Cardiology',
@@ -21,6 +23,9 @@ describe('doctors', () => {
 
   beforeEach(async () => {
     await helpers.clearCollections();
+    await helpers.seedAdmin();
+    const login = await helpers.login();
+    adminCookie = login.adminCookie;
   });
 
   it('blocks all doctor routes for unauthenticated clients (401)', async () => {
@@ -29,11 +34,9 @@ describe('doctors', () => {
   });
 
   it('creates a doctor with valid data', async () => {
-    await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
     const res = await require('supertest')(helpers.app)
       .post('/api/v1/doctors')
-      .set('Cookie', cookieHeader)
+      .set('Cookie', adminCookie)
       .send(doctorPayload(1));
 
     expect(res.status).toBe(201);
@@ -43,12 +46,12 @@ describe('doctors', () => {
 
   it('rejects duplicate doctor email with 409', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
-    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', cookieHeader).send(doctorPayload(1));
+    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', adminCookie).send(doctorPayload(1));
     const duplicate = await require('supertest')(helpers.app)
       .post('/api/v1/doctors')
-      .set('Cookie', cookieHeader)
+      .set('Cookie', adminCookie)
       .send(doctorPayload(1));
 
     expect(duplicate.status).toBe(409);
@@ -56,11 +59,11 @@ describe('doctors', () => {
 
   it('rejects an unsupported specialization with 422', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
     const res = await require('supertest')(helpers.app)
       .post('/api/v1/doctors')
-      .set('Cookie', cookieHeader)
+      .set('Cookie', adminCookie)
       .send(doctorPayload(1, { specialization: 'Astrology' }));
 
     expect(res.status).toBe(422);
@@ -68,18 +71,18 @@ describe('doctors', () => {
 
   it('lists doctors with pagination meta', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
     for (let i = 1; i <= 15; i += 1) {
       await require('supertest')(helpers.app)
         .post('/api/v1/doctors')
-        .set('Cookie', cookieHeader)
+        .set('Cookie', adminCookie)
         .send(doctorPayload(i));
     }
 
     const res = await require('supertest')(helpers.app)
       .get('/api/v1/doctors?page=2&limit=5')
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
 
     expect(res.status).toBe(200);
     expect(res.body.data.length).toBe(5);
@@ -91,15 +94,15 @@ describe('doctors', () => {
 
   it('searches doctors by name / hospital / email', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
-    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', cookieHeader).send(doctorPayload(1, { specialization: 'Neurology' }));
-    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', cookieHeader).send(doctorPayload(2, { hospital: 'Cardiology Path Hospital' }));
-    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', cookieHeader).send(doctorPayload(3, { name: 'Dr. Unique Neuro' }));
+    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', adminCookie).send(doctorPayload(1, { specialization: 'Neurology' }));
+    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', adminCookie).send(doctorPayload(2, { hospital: 'Cardiology Path Hospital' }));
+    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', adminCookie).send(doctorPayload(3, { name: 'Dr. Unique Neuro' }));
 
     const res = await require('supertest')(helpers.app)
       .get('/api/v1/doctors?search=unique')
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
 
     expect(res.status).toBe(200);
     expect(res.body.data.length).toBe(1);
@@ -107,21 +110,21 @@ describe('doctors', () => {
 
     const res2 = await require('supertest')(helpers.app)
       .get('/api/v1/doctors?search=cardiology')
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
     expect(res2.body.meta.total).toBe(2);
   });
 
   it('filters by specialization and sorts by name asc', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
-    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', cookieHeader).send(doctorPayload(1, { specialization: 'Neurology' }));
-    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', cookieHeader).send(doctorPayload(2));
-    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', cookieHeader).send(doctorPayload(3, { specialization: 'Neurology' }));
+    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', adminCookie).send(doctorPayload(1, { specialization: 'Neurology' }));
+    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', adminCookie).send(doctorPayload(2));
+    await require('supertest')(helpers.app).post('/api/v1/doctors').set('Cookie', adminCookie).send(doctorPayload(3, { specialization: 'Neurology' }));
 
     const res = await require('supertest')(helpers.app)
       .get('/api/v1/doctors?specialization=Neurology&sortBy=name&sortOrder=asc')
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
 
     expect(res.body.meta.total).toBe(2);
     expect(res.body.data[0].name < res.body.data[1].name).toBe(true);
@@ -129,7 +132,7 @@ describe('doctors', () => {
 
   it('filters by createdAt date range', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
     await Doctor.create({
       ...doctorPayload(1),
@@ -142,7 +145,7 @@ describe('doctors', () => {
 
     const res = await require('supertest')(helpers.app)
       .get(`/api/v1/doctors?dateFrom=${new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}&dateTo=${new Date().toISOString().slice(0, 10)}`)
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
 
     expect(res.body.meta.total).toBe(1);
     expect(res.body.data[0].name).toBe('Dr. Test 2');
@@ -150,7 +153,7 @@ describe('doctors', () => {
 
   it('returns pagination meta and rows for doctors/:id/patients', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
     const doctor = await Doctor.create(doctorPayload(1));
     for (let i = 0; i < 12; i += 1) {
@@ -166,7 +169,7 @@ describe('doctors', () => {
 
     const res = await require('supertest')(helpers.app)
       .get(`/api/v1/doctors/${doctor._id}/patients?page=2&limit=5`)
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
 
     expect(res.status).toBe(200);
     expect(res.body.data.length).toBe(5);
@@ -176,13 +179,13 @@ describe('doctors', () => {
 
   it('adds a patient under a doctor and reports accurate counts', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
     const doctor = await Doctor.create(doctorPayload(1));
 
     const res = await require('supertest')(helpers.app)
       .post(`/api/v1/doctors/${doctor._id}/patients`)
-      .set('Cookie', cookieHeader)
+      .set('Cookie', adminCookie)
       .send({
         fullName: 'Roster Patient',
         age: 42,
@@ -197,13 +200,13 @@ describe('doctors', () => {
 
     const meRes = await require('supertest')(helpers.app)
       .get(`/api/v1/doctors/${doctor._id}`)
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
     expect(meRes.body.data.patientCount).toBe(1);
   });
 
   it('removes a patient from the doctor roster without deleting the record', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
     const doctor = await Doctor.create(doctorPayload(1));
     const patient = await Patient.create({
@@ -217,7 +220,7 @@ describe('doctors', () => {
 
     const res = await require('supertest')(helpers.app)
       .delete(`/api/v1/doctors/${doctor._id}/patients/${patient._id}`)
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
 
     expect(res.status).toBe(200);
     expect(await Patient.countDocuments()).toBe(1);
@@ -225,12 +228,12 @@ describe('doctors', () => {
 
   it('updates a doctor with PATCH (partial)', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
     const doctor = await Doctor.create(doctorPayload(1));
     const res = await require('supertest')(helpers.app)
       .patch(`/api/v1/doctors/${doctor._id}`)
-      .set('Cookie', cookieHeader)
+      .set('Cookie', adminCookie)
       .send({ phone: '+1 202 9990000' });
 
     expect(res.status).toBe(200);
@@ -240,7 +243,7 @@ describe('doctors', () => {
 
   it('deletes a doctor and unassigns linked patients (no cascade loss)', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
     const doctor = await Doctor.create(doctorPayload(1));
     await Patient.create({
@@ -254,7 +257,7 @@ describe('doctors', () => {
 
     const delRes = await require('supertest')(helpers.app)
       .delete(`/api/v1/doctors/${doctor._id}`)
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
     expect(delRes.status).toBe(200);
 
     expect(await Patient.countDocuments({ doctorId: doctor._id })).toBe(0);
@@ -264,22 +267,22 @@ describe('doctors', () => {
 
   it('404s a doctor that does not exist (valid ObjectId)', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
     const res = await require('supertest')(helpers.app)
       .get('/api/v1/doctors/64cd5f1b9d34830000111111')
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
 
     expect(res.status).toBe(404);
   });
 
   it('400/422s a malformed doctor ObjectId', async () => {
     await helpers.seedAdmin();
-    const { cookieHeader } = await helpers.login();
+    const { adminCookie } = await helpers.login();
 
     const res = await require('supertest')(helpers.app)
       .get('/api/v1/doctors/bad-object-id')
-      .set('Cookie', cookieHeader);
+      .set('Cookie', adminCookie);
 
     expect([400, 422]).toContain(res.status);
   });

@@ -11,4 +11,19 @@ function isCompleteMongoUri(value) {
   return database.trim().length > 0;
 }
 
-module.exports = { isCompleteMongoUri };
+function getMongoDatabaseName(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^mongodb(?:\+srv)?:\/\/[^/]+\/([^/?#]*)/i);
+  if (!match || !match[1]) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function isDemoMongoUri(value) {
+  return getMongoDatabaseName(value) === 'doctor-tracker-demo';
+}
+
+module.exports = { isCompleteMongoUri, getMongoDatabaseName, isDemoMongoUri };

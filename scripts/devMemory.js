@@ -1,6 +1,6 @@
 /**
  * Development helper: starts the API against an in-memory MongoDB and seeds
- * everything (admin + synthetic demo data) so the whole stack can be shown
+ * an admin plus synthetic data so the whole stack can be shown
  * without Atlas.
  *
  *   npm run dev:memory
@@ -24,7 +24,7 @@ async function devMemory() {
   const seedAdmin = require('./seedAdmin');
   const seedDemoData = require('./seedDemoData');
   await seedAdmin({ argv: [] });
-  await seedDemoData();
+  await seedDemoData({ uri, requireEmptyDatabase: false });
 
   // (seeders close their own connections; the app re-opens its own below)
 

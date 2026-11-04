@@ -44,7 +44,13 @@ function isMongoFailure(error) {
 function connectDatabase(uri = env.MONGODB_URI) {
   if (!connecting) {
     connecting = mongoose
-      .connect(uri, { serverSelectionTimeoutMS: 10000, connectTimeoutMS: 10000 })
+      .connect(uri, {
+        serverSelectionTimeoutMS: 10000,
+        connectTimeoutMS: 10000,
+        // Atlas runtime credentials are read-only; indexes are created by the temporary seed user.
+        autoIndex: !env.DEMO_MODE,
+        autoCreate: !env.DEMO_MODE,
+      })
       .then(() => {
         console.log(`✅ MongoDB connected (${mongoose.connection.name})`);
         return mongoose.connection;

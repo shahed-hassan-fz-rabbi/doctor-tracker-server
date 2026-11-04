@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const Admin = require('../models/admin.model');
 const User = require('../models/user.model');
+const DemoAccount = require('../models/demoAccount.model');
 const env = require('../config/env');
 const ApiError = require('../utils/apiError');
 
@@ -33,13 +34,34 @@ async function requireAuth(req, _res, next) {
 
     let decoded;
     try {
-      decoded = jwt.verify(cookieToken || headerToken, env.JWT_SECRET);
+      decoded = jwt.verify(
+        cookieToken || headerToken,
+        env.JWT_SECRET,
+        env.DEMO_MODE
+          ? { issuer: 'doctor-tracker-demo', audience: 'doctor-tracker-demo' }
+          : undefined
+      );
     } catch {
       throw ApiError.unauthorized('Session expired or invalid');
     }
 
-    // Route to the correct model based on the provider claim in the JWT
-    if (decoded.provider === 'google') {
+    // Demo credentials can only validate in the isolated demo service.
+    if (decoded.provider === 'demo') {
+      if (!env.DEMO_MODE) throw ApiError.unauthorized('Session expired or invalid');
+      const account = await DemoAccount.findById(decoded.sub).select('_id name email active').lean();
+      if (!account || !account.active) throw ApiError.unauthorized('Account no longer exists');
+      req.user = {
+        id: account._id.toString(),
+        name: account.name,
+        email: account.email,
+        role: 'viewer',
+        provider: 'demo',
+        isDemo: true,
+      };
+    } else if (env.DEMO_MODE) {
+      // The demo service accepts only demo viewer tokens, never Admin/Google tokens.
+      throw ApiError.unauthorized('Session expired or invalid');
+    } else if (decoded.provider === 'google') {
       // Google OAuth user
       const user = await User.findById(decoded.sub).select('_id name email role status provider').lean();
       if (!user) {
@@ -88,4 +110,33 @@ function requireAdmin(req, _res, next) {
   return next();
 }
 
-module.exports = { requireAuth, requireAdmin };
+/**
+ * Every doctor, patient, and analytics route uses this after requireAuth.
+ * It is a no-op in production and requires the dedicated viewer identity in
+ * demo mode, so Admin/Google sessions can never access the demo service.
+ */
+function requireDemoViewer(req, _res, next) {
+  if (!env.DEMO_MODE) return next();
+  if (req.user?.provider !== 'demo' || req.user?.role !== 'viewer') {
+    return next(ApiError.forbidden());
+  }
+  return next();
+}
+
+/** Preserve production analytics admin policy while granting isolated demo viewers read-only analytics. */
+function requireAdminOrDemoViewer(req, _res, next) {
+  if (env.DEMO_MODE && req.user?.provider === 'demo' && req.user?.role === 'viewer') return next();
+  return requireAdmin(req, _res, next);
+}
+
+function requireProductionAuth(req, _res, next) {
+  if (env.DEMO_MODE) return next(ApiError.notFound('Not found'));
+  return next();
+}
+
+function requireDemoMode(req, _res, next) {
+  if (!env.DEMO_MODE) return next(ApiError.notFound('Not found'));
+  return next();
+}
+
+module.exports = { requireAuth, requireAdmin, requireDemoViewer, requireAdminOrDemoViewer, requireProductionAuth, requireDemoMode };
