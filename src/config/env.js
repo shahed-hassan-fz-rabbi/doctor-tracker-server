@@ -37,8 +37,9 @@ const envSchema = z.object({
   GOOGLE_CALLBACK_URL: z
     .string()
     .default('http://localhost:4000/api/v1/auth/google/callback'),
-  /** Frontend origin to redirect back to after OAuth (e.g. https://doctor-tracker-client-sepia.vercel.app) */
-  FRONTEND_URL: z.string().default('http://localhost:3000'),
+  /** Frontend origin to redirect back to after OAuth. Must match CORS_ORIGINS.
+   *  Example: https://doctor-tracker-client-sepia.vercel.app */
+  FRONTEND_ORIGIN: z.string().default('http://localhost:3000'),
 });
 
 /**

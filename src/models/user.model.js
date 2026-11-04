@@ -9,13 +9,28 @@ const mongoose = require('mongoose');
  *
  * A user promoted to admin by a human operator gets role:'admin' here and
  * is then permitted through the admin guards the same way a seeded admin is.
+ *
+ * Fields stored per the registration requirement:
+ *   googleId       — stable Google subject ID (sub) — unique index
+ *   email          — normalized lowercase — unique index
+ *   name           — display name from Google profile
+ *   picture        — Google profile photo URL
+ *   provider       — always 'google' (reserved for future providers)
+ *   emailVerified  — Google's verified flag for this address
+ *   role           — 'viewer' (default) | 'admin' (operator-promoted only)
+ *   status         — 'active' | 'suspended'
+ *   lastLoginAt    — updated on every successful sign-in (not on creation)
+ *   createdAt      — auto-set by Mongoose timestamps option
+ *   updatedAt      — auto-set by Mongoose timestamps option
+ *
+ * NOT stored: Google passwords, OAuth client secrets, application JWT secrets.
  */
 const userSchema = new mongoose.Schema(
   {
     /** Stable Google subject identifier — never changes for a Google account. */
     googleId: {
       type: String,
-      required: true,
+      required: [true, 'Google subject ID is required'],
       unique: true,
       trim: true,
     },
@@ -74,8 +89,18 @@ const userSchema = new mongoose.Schema(
       default: 'active',
       enum: { values: ['active', 'suspended'], message: 'Unsupported status' },
     },
+
+    /**
+     * Timestamp of the most recent successful sign-in.
+     * Set to null initially; updated on every Google callback that succeeds.
+     * This is separate from createdAt — createdAt is set once at registration.
+     */
+    lastLoginAt: {
+      type: Date,
+      default: null,
+    },
   },
-  { timestamps: true }
+  { timestamps: true } // adds createdAt and updatedAt automatically
 );
 
 module.exports = mongoose.model('User', userSchema);

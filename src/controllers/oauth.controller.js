@@ -62,7 +62,7 @@ async function initiateGoogleAuth(req, res, next) {
  */
 async function handleGoogleCallback(req, res, next) {
   const { code, state, error: oauthError } = req.query;
-  const frontendBase = env.FRONTEND_URL || 'http://localhost:3000';
+  const frontendBase = env.FRONTEND_ORIGIN || 'http://localhost:3000';
 
   // Google returned an error (e.g. user denied access)
   if (oauthError) {

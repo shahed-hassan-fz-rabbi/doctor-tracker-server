@@ -12,9 +12,10 @@ const env = require('../config/env');
  * - The ID token is verified against Google's public keys on the backend —
  *   the client never touches the token.
  * - Passwords are never stored or requested.
+ * - Google client secrets are never stored in MongoDB.
  */
 
-const client = new OAuth2Client(env.GOOGLE_CLIENT_ID);
+const verificationClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
 /**
  * Builds the Google OAuth authorization URL and a matching CSRF state token.
@@ -54,11 +55,12 @@ async function verifyGoogleCallback(code) {
     redirectUri: env.GOOGLE_CALLBACK_URL,
   });
 
-  // Exchange code → tokens
+  // Exchange authorization code for access + ID tokens
   const { tokens } = await oauthClient.getToken(code);
 
-  // Verify the ID token using Google's public keys
-  const ticket = await client.verifyIdToken({
+  // Verify the ID token signature and claims against Google's public keys.
+  // This is the security-critical step — we never trust client-supplied identity.
+  const ticket = await verificationClient.verifyIdToken({
     idToken: tokens.id_token,
     audience: env.GOOGLE_CLIENT_ID,
   });
@@ -73,48 +75,76 @@ async function verifyGoogleCallback(code) {
 
 /**
  * Finds an existing User by googleId, or creates a new one.
- * New users receive role:'viewer' and status:'active' automatically.
+ *
+ * Registration flow (first login):
+ *   1. Look up by stable googleId (sub from Google's ID token)
+ *   2. If not found, check if the email already exists (account linking)
+ *   3. If truly new, create User document with safe defaults:
+ *      - role: 'viewer'   — never auto-promoted to admin
+ *      - status: 'active'
+ *      - lastLoginAt: now (set at creation = first login)
+ *
+ * Subsequent login flow:
+ *   1. Found by googleId → update mutable profile fields (name, picture)
+ *   2. Update lastLoginAt = now
+ *   3. Save — no duplicate user is created
+ *
+ * Race condition safety:
+ *   MongoDB unique indexes on googleId and email prevent duplicate documents
+ *   even if two requests race. The error is caught and re-thrown as an
+ *   ApiError upstream.
+ *
+ * NOT stored: Google passwords, OAuth client secrets, application JWT secrets.
  *
  * @param {import('google-auth-library').TokenPayload} googlePayload
  * @returns {Promise<import('../models/user.model').default>}
  */
 async function findOrCreateUser(googlePayload) {
   const { sub: googleId, email, name, picture, email_verified: emailVerified } = googlePayload;
+  const normalizedEmail = email.toLowerCase();
+  const now = new Date();
 
-  // Try to find by stable googleId first
+  // ── Existing user path ────────────────────────────────────────────────────
   let user = await User.findOne({ googleId });
 
-  if (!user) {
-    // Check if someone already registered this email via another provider
-    // (future-proofing — currently only Google is supported)
-    const existing = await User.findOne({ email: email.toLowerCase() });
-    if (existing) {
-      // Link Google identity to existing account
-      existing.googleId = googleId;
-      existing.picture = picture || existing.picture;
-      existing.emailVerified = emailVerified || existing.emailVerified;
-      await existing.save();
-      return existing;
-    }
-
-    // Brand new user — create with minimal safe defaults
-    user = await User.create({
-      googleId,
-      email: email.toLowerCase(),
-      name,
-      picture: picture || null,
-      emailVerified: Boolean(emailVerified),
-      role: 'viewer',
-      status: 'active',
-      provider: 'google',
-    });
-  } else {
-    // Update mutable fields that Google controls (name, picture, email_verified)
+  if (user) {
+    // Subsequent login: update mutable Google-controlled fields + lastLoginAt
     user.name = name;
     user.picture = picture || user.picture;
     user.emailVerified = emailVerified || user.emailVerified;
+    user.lastLoginAt = now;
     await user.save();
+    return user;
   }
+
+  // ── Email exists but no googleId linked ──────────────────────────────────
+  // This handles a future case where a user registered via another provider
+  // and is now signing in with Google. Link the Google identity instead of
+  // creating a duplicate account.
+  const existingByEmail = await User.findOne({ email: normalizedEmail });
+  if (existingByEmail) {
+    existingByEmail.googleId = googleId;
+    existingByEmail.picture = picture || existingByEmail.picture;
+    existingByEmail.emailVerified = emailVerified || existingByEmail.emailVerified;
+    existingByEmail.lastLoginAt = now;
+    await existingByEmail.save();
+    return existingByEmail;
+  }
+
+  // ── First registration ───────────────────────────────────────────────────
+  // Brand new user — create with safe defaults.
+  // lastLoginAt is set to 'now' because the first login IS the registration event.
+  user = await User.create({
+    googleId,
+    email: normalizedEmail,
+    name,
+    picture: picture || null,
+    emailVerified: Boolean(emailVerified),
+    provider: 'google',
+    role: 'viewer',      // never auto-promoted — operator must elevate explicitly
+    status: 'active',
+    lastLoginAt: now,
+  });
 
   return user;
 }
