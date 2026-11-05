@@ -348,13 +348,14 @@ All responses conform to a unified JSON envelope:
 Doctor Tracker provides a public demo instance for evaluation without compromising production integrity:
 
 - **Separate Database User:** The demo environment connects strictly to `doctor-tracker-demo` using a database user granted only `read` privileges.
-- **Middleware Lockout:** In demo mode (`DEMO_MODE=true`), all non-GET routes on doctors and patients immediately return `403 Forbidden`:
+- **Middleware Lockout:** In demo mode (`DEMO_MODE=true`), all write routes on doctors and patients require the `admin` role, so demo viewers immediately get:
   ```json
   {
     "success": false,
-    "message": "Write operations are disabled in demo mode."
+    "message": "You do not have permission to perform this action"
   }
   ```
+  (HTTP `403 Forbidden`, enforced by `requireAdmin` before `requireDemoViewer` allows reading.)
 - **JWT Issuer Verification:** Demo JWTs contain a distinct claim (`issuer: 'doctor-tracker-demo'`). The production server rejects demo tokens, and the demo server rejects production admin tokens.
 
 ---
@@ -443,6 +444,10 @@ The API will start at [http://localhost:4000/api/v1](http://localhost:4000/api/v
 | `GOOGLE_CLIENT_ID`| No | Google OAuth 2.0 Web Client ID *(Optional in dev)* | `your-client-id.apps.googleusercontent.com` |
 | `GOOGLE_CLIENT_SECRET`| No | Google OAuth 2.0 Client Secret *(Optional in dev)* | `GOCSPX-your-secret` |
 | `GOOGLE_CALLBACK_URL` | No | Redirect URI registered in Google Console | `http://localhost:4000/api/v1/auth/google/callback` |
+| `DEMO_MODE` | Demo only | Set `true` on the isolated demo runtime service only | `true` |
+| `DEMO_MONGODB_URI` | Demo only | Demo URI (must target `/doctor-tracker-demo`), replaces `MONGODB_URI` in demo mode | `mongodb+srv://<read-only-user>…/doctor-tracker-demo` |
+| `DEMO_JWT_SECRET` | Demo only | Unique 32+ char secret (replaces `JWT_SECRET` in demo mode) | `long-random-demo-secret` |
+| `DEMO_SEED_MONGODB_URI` | Provisioning only | Temporary readWrite demo user for seed scripts; never on a runtime service | `mongodb+srv://<seed-user>…/doctor-tracker-demo` |
 
 ---
 
@@ -473,9 +478,11 @@ npm test
 Test coverage includes:
 - **Authentication:** Admin login, cookie handling, session profile retrieval, logout.
 - **RBAC & Security:** Admin routes blocked for viewers, demo viewer read permissions, write rejections.
+- **OAuth & Demo Isolation:** Demo login gating (`404` unless `DEMO_MODE=true`), demo token issuer/audience isolation, demo viewer write rejections across doctors/patients.
 - **Doctor CRUD:** Creation, pagination, filtering by specialization, cascaded patient unassignment on deletion.
 - **Patient CRUD:** Validation schemas, assignment to doctors, status filtering.
 - **Analytics:** Aggregations for patient growth, specializations, and caseload balance.
+- **Seed Script Safety:** Demo seeds refuse non-demo URIs, non-empty databases, and non-synthetic datasets.
 - **Database Diagnostics:** Connection URI validation and error handling without secret exposure.
 
 ---
