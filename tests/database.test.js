@@ -37,6 +37,16 @@ describe('database diagnostics', () => {
       DEMO_JWT_SECRET: 'd'.repeat(40), JWT_SECRET: 'production-secret-value',
       COOKIE_NAME: 'dt_demo_token', COOKIE_SECURE: 'true',
     }).success).toBe(false);
+    expect(validateEnv({
+      NODE_ENV: 'development', DEMO_MODE: 'true',
+      DEMO_MONGODB_URI: 'mongodb://127.0.0.1:27017/doctor-tracker-demo',
+      DEMO_JWT_SECRET: 'd'.repeat(40), COOKIE_NAME: 'dt_demo_token_dev', COOKIE_SECURE: 'false',
+    }).success).toBe(true);
+    expect(validateEnv({
+      NODE_ENV: 'production', DEMO_MODE: 'true',
+      DEMO_MONGODB_URI: 'mongodb://runtime:encoded@localhost:27017/doctor-tracker-demo',
+      DEMO_JWT_SECRET: 'd'.repeat(40), COOKIE_NAME: 'dt_demo_token', COOKIE_SECURE: 'false',
+    }).success).toBe(false);
   });
 
   it('identifies malformed MongoDB connection strings without echoing them', () => {

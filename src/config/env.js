@@ -58,7 +58,9 @@ const envSchema = z.object({
     if (value.JWT_SECRET) problem('JWT_SECRET', 'JWT_SECRET must not be set in demo mode; use a separate DEMO_JWT_SECRET');
     if (value.DEMO_SEED_MONGODB_URI) problem('DEMO_SEED_MONGODB_URI', 'Temporary seed credentials must not be configured on the demo runtime service');
     if (value.COOKIE_NAME === 'dt_token') problem('COOKIE_NAME', 'Set a demo-specific COOKIE_NAME such as dt_demo_token');
-    if (!value.COOKIE_SECURE) problem('COOKIE_SECURE', 'COOKIE_SECURE must be true in demo mode');
+    if (value.NODE_ENV === 'production' && !value.COOKIE_SECURE) {
+      problem('COOKIE_SECURE', 'COOKIE_SECURE must be true in production demo mode');
+    }
     if (value.ADMIN_NAME || value.ADMIN_EMAIL || value.ADMIN_PASSWORD) problem('ADMIN_PASSWORD', 'Admin seed credentials must not be configured on the demo runtime service');
     if (value.GOOGLE_CLIENT_ID || value.GOOGLE_CLIENT_SECRET) problem('GOOGLE_CLIENT_SECRET', 'Google OAuth credentials must not be configured on the demo runtime service');
   } else {
@@ -76,10 +78,19 @@ const envSchema = z.object({
  * Under tests, modules are imported before the in-memory MongoDB exists.
  * Supply harmless defaults instead of exiting — tests/helpers.js replaces
  * MONGODB_URI with the real in-memory server URI before mongoose connects.
+ *
+ * Also strip demo-only vars so a local .env that happens to have
+ * DEMO_SEED_MONGODB_URI / DEMO_MONGODB_URI / DEMO_JWT_SECRET doesn't
+ * violate the "must not set demo vars when DEMO_MODE=false" guard.
  */
 if (process.env.NODE_ENV === 'test') {
   process.env.MONGODB_URI ||= 'mongodb://127.0.0.1:27017/doctor-tracker-test';
   process.env.JWT_SECRET ||= 'test-super-secret-key-for-vitest-0123456789';
+  // Tests always run as production mode; demo vars must not be present.
+  delete process.env.DEMO_MODE;
+  delete process.env.DEMO_MONGODB_URI;
+  delete process.env.DEMO_JWT_SECRET;
+  delete process.env.DEMO_SEED_MONGODB_URI;
 }
 
 function validateEnv(source = process.env) {

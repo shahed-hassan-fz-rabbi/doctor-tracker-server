@@ -8,6 +8,7 @@ The API stores its data in MongoDB through Mongoose. The client and server are s
 
 - Versioned REST endpoints under `/api/v1`.
 - Admin login, session verification, and logout using a JWT in an HttpOnly cookie.
+- An isolated public demo API with read-only viewer sessions and synthetic data.
 - Doctor and patient CRUD, search, filters, sorting, and server-side pagination.
 - Doctor-patient relationships and roster endpoints.
 - MongoDB aggregations for dashboard and analytics data.
@@ -33,7 +34,7 @@ You’ll need Node.js 20 or newer and a MongoDB database, either local or in Atl
 npm ci
 ```
 
-Copy `.env.example` to `.env` and set `MONGODB_URI` and a unique `JWT_SECRET` of at least 16 characters. The MongoDB URI must include the database name, such as `/doctor-tracker`. Set the admin seed values if you need to create a local admin.
+Copy `.env.example` to `.env` and set `MONGODB_URI` and a unique `JWT_SECRET` of at least 16 characters. The MongoDB URI must include the database name, such as `/doctor-tracker`.
 
 Start the API:
 
@@ -43,7 +44,7 @@ npm run dev
 
 The default local port is `4000`. The client’s `NEXT_PUBLIC_API_URL` should be `http://localhost:4000/api/v1`, and `CORS_ORIGINS` must include the exact client origin (usually `http://localhost:3000`).
 
-Never commit `.env` or use the example values as real credentials. The seed scripts are for setup and development; don’t run the demo-data seed against production.
+Never commit `.env` or use the example values as real credentials. Admin credentials are not stored in `.env`: run `npm run seed:admin` from a private interactive terminal only when the production database has no Admin account. The script asks for the email, then reads the password without echoing it. It hashes the password, creates the first Admin once, and refuses to reset or duplicate an existing account. The seed scripts are for setup and development; don’t run the demo-data seed against production.
 
 ## Configuration
 
@@ -60,11 +61,10 @@ Never commit `.env` or use the example values as real credentials. The seed scri
 | `RATE_LIMIT_WINDOW_MINUTES`, `RATE_LIMIT_MAX` | General API limit | Defaults are in `.env.example` |
 | `LOGIN_RATE_LIMIT_WINDOW_MINUTES`, `LOGIN_RATE_LIMIT_MAX` | Login API limit | Defaults are in `.env.example` |
 | `LOG_LEVEL` | Server log verbosity | Defaults to `info` |
-| `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Admin seed inputs | Used by `npm run seed:admin`, not normal request handling |
 
 ## API overview
 
-Application endpoints require an admin session. Successful responses use a common JSON envelope.
+Production doctor, patient, relationship, and analytics endpoints require an Admin session. The isolated demo service accepts only its dedicated viewer session for reads and rejects all writes. Successful responses use a common JSON envelope.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -125,4 +125,4 @@ The API is deployed at [`https://doctor-tracker-server-29dm.onrender.com`](https
 
 In MongoDB Atlas, grant the application database user `readWrite` access to `doctor-tracker`. Add the Render service’s outbound IP ranges to Atlas Network Access; don’t use `0.0.0.0/0` for production. If a username or password contains reserved URI characters, percent-encode those characters in the connection string. Store the URI only in Render’s `MONGODB_URI` setting. Keep `COOKIE_SECURE=true` and both services on HTTPS so the session cookie can be sent securely.
 
-The existing database already has its admin and records. Don’t rerun `seed:admin` or `seed:demo` against production.
+The existing database already has its admin and records. The Admin setup script is a no-op for the matching existing account and refuses to create a second Admin. Don’t run `seed:demo` against production.
